@@ -10,7 +10,6 @@ variable "default_tags" {
 
 variable "key_name" {
   type = string
-  default = "logger-key"
 }
 
 variable "security_group_name" {
