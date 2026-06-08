@@ -1,4 +1,4 @@
-The idea for this project came from Day 49 of KodeKloud's 100 Days of Cloud (AWS). What this does is gather boot.log from /var/log/boots.log on a private EC2 instance, uses a cron job to securely copy it to a public instance, which then copies it to an S3 bucket for further study or ingestion by other AWS services. More to come later.
+The idea for this project came from Day 49 of KodeKloud's 100 Days of Cloud (AWS), which had me do this by hand in the console or the CLI. I wanted to try it in Terraform instead. What this does is gather boot.log from /var/log/boots.log on a private EC2 instance, uses a cron job to securely copy it to a public instance, which then copies it to an S3 bucket for ingestion by other AWS services, saving the engineer from having to SSH into the EC2 instance to read it there. The real value would be doing exactly that: sending the log data into a query service like a database that serves as a search tool's backend, so log data is more easily read through.
 
 I've started adding the public infrastructure: VPC, subnets, IGW, route table, and EC2 and associated moving parts.
 
