@@ -12,9 +12,15 @@ variable "key_name" {
   type = string
 }
 
-variable "security_group_name" {
+variable "priv_security_group_name" {
   type = string
   default = "logger-priv-sg"
+}
+
+variable "pub_security_group_name" {
+  type = string
+  default = "logger-pub-sg"
+  
 }
 
 variable "ami" {
