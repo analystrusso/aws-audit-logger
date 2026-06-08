@@ -1,0 +1,1 @@
+The idea for this project came from Day 49 of KodeKloud's 100 Days of Cloud (AWS). What this does is gather boot.log from /var/log/boots.log on a private EC2 instance, uses a cron job to securely copy it to a public instance, which then copies it to an S3 bucket for further study or ingestion by other AWS services. More to come later.
