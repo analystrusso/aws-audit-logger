@@ -38,21 +38,15 @@ resource "aws_route_table_association" "priv-rt-assoc" {
 }
 
 #Define Key Pair
-resource "tls_private_key" "logger_key" {
-  algorithm = "RSA"
-  rsa_bits = 4096
+data "aws_ssm_parameter" "logger_private_key" {
+  name            = "/dev/logger/private-key"
+  with_decryption = true
 }
 
-resource "aws_key_pair" "logger_key_pair" {
-  key_name = var.key_name
-  public_key = tls_private_key.logger_key.public_key_openssh
+data "aws_key_pair" "logger_key_pair" {
+  key_name = "logger-key"
 }
 
-resource "local_file" "private_key" {
-  content = tls_private_key.logger_key.private_key_pem
-  filename = "${path.module}/${var.key_name}.pem"
-  file_permission = "0600"
-}
 
 #Define Private EC2 Security Group
 resource "aws_security_group" "logger_priv_sg" {
@@ -87,11 +81,12 @@ module "priv_ec2_instance" {
   subnet_id     = module.priv_vpc.private_subnets[0]
   ami           = var.ami 
   vpc_security_group_ids = [aws_security_group.logger_priv_sg.id]
+  iam_instance_profile = aws_iam_instance_profile.ssm_profile.name
 
   user_data = templatefile("${path.module}/priv_userdata.sh", {
-  private_key    = tls_private_key.logger_key.private_key_pem
-  pub_private_ip = module.pub_ec2_instance.private_ip
+    pub_private_ip = module.pub_ec2_instance.private_ip
 })
+
   tags = {
     Terraform   = "true"
     Environment = "dev"
@@ -123,7 +118,7 @@ resource "aws_internet_gateway" "logger-igw" {
   vpc_id = module.pub_vpc.vpc_id
 
   tags = {
-    Name = "logger-pub-rt"
+    Name = "logger-pub-igw"
   }
 }
 
@@ -161,7 +156,7 @@ resource "aws_security_group" "logger_pub_sg" {
 
 resource "aws_vpc_security_group_ingress_rule" "allow_ssh_pub" {
   security_group_id = aws_security_group.logger_pub_sg.id
-  cidr_ipv4         = module.priv_vpc.vpc_cidr_block
+  cidr_ipv4         = var.my_ip
   from_port         = 22
   ip_protocol       = "tcp"
   to_port           = 22
@@ -186,10 +181,11 @@ module "pub_ec2_instance" {
   ami           = var.ami 
   vpc_security_group_ids = [aws_security_group.logger_pub_sg.id]
   iam_instance_profile = aws_iam_instance_profile.logger_profile.name
+  associate_public_ip_address = true
 
-  user_data = templatefile("${path.module}/pub_userdata.sh", {
-    pub_key = tls_private_key.logger_key.public_key_openssh
-  })
+user_data = templatefile("${path.module}/pub_userdata.sh", {
+  pub_key = var.pub_key
+})
 
   tags = {
     Terraform   = "true"
@@ -266,6 +262,52 @@ resource "aws_iam_role_policy" "logger_bucket_policy" {
 resource "aws_iam_instance_profile" "logger_profile" {
   name = "logger-instance-profile"
   role = aws_iam_role.logger_bucket_role.name
+}
+
+resource "aws_iam_role" "logger_ssm_role" {
+  name = "logger_ssm_role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Sid    = ""
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      },
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "logger_ssm_policy" {
+  name = "ssm_policy"
+  role = aws_iam_role.logger_ssm_role.id
+
+  # Terraform's "jsonencode" function converts a
+  # Terraform expression result to valid JSON syntax.
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = ["ssm:GetParameter"]
+        Effect = "Allow"
+        Resource = "arn:aws:ssm:us-east-1:${var.account_id}:parameter/dev/logger/private-key"
+      },
+      {
+        Action = ["kms:Decrypt"]
+        Effect = "Allow"
+        Resource = "arn:aws:kms:us-east-1:${var.account_id}:alias/aws/ssm"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_instance_profile" "ssm_profile" {
+  name = "ssm-instance-profile"
+  role = aws_iam_role.logger_ssm_role.name
 }
 
 #Define VPC Peering

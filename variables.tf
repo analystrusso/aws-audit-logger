@@ -12,6 +12,10 @@ variable "key_name" {
   type = string
 }
 
+variable "pub_key" {
+  type = string
+}
+
 variable "priv_security_group_name" {
   type = string
   default = "logger-priv-sg"
@@ -26,4 +30,12 @@ variable "pub_security_group_name" {
 variable "ami" {
   type = string
   default = "ami-0b6d9d3d33ba97d99"
+}
+
+variable "my_ip" {
+  type = string
+}
+
+variable "account_id" {
+  type = string
 }
