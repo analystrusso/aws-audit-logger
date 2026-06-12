@@ -17,26 +17,6 @@ module "priv_vpc" {
   }
 }
 
-#Define Private Route Table
-resource "aws_route_table" "priv-rt" {
-  vpc_id = module.priv_vpc.vpc_id
-
-  route {
-    cidr_block = module.pub_vpc.vpc_cidr_block
-    vpc_peering_connection_id = aws_vpc_peering_connection.peer.id
-  }
-
-  tags = {
-    Name = "logger-priv-rt"
-  }
-}
-
-#Define priv-rt Subnet Association
-resource "aws_route_table_association" "priv-rt-assoc" {
-  route_table_id = aws_route_table.priv-rt.id
-  subnet_id = module.priv_vpc.private_subnets[0]
-}
-
 #Define Key Pair
 data "aws_ssm_parameter" "logger_private_key" {
   name            = "/dev/logger/private-key"
@@ -63,6 +43,14 @@ resource "aws_vpc_security_group_ingress_rule" "allow_ssh_priv" {
   to_port           = 22
 }
 
+resource "aws_vpc_security_group_ingress_rule" "allow_ssh_from_pub" {
+  security_group_id = aws_security_group.logger_priv_sg.id
+  cidr_ipv4         = module.pub_vpc.vpc_cidr_block
+  from_port         = 22
+  ip_protocol       = "tcp"
+  to_port           = 22
+}
+
 resource "aws_vpc_security_group_egress_rule" "allow_all_priv" {
   security_group_id = aws_security_group.logger_priv_sg.id
   cidr_ipv4         = "0.0.0.0/0"
@@ -83,10 +71,10 @@ module "priv_ec2_instance" {
   vpc_security_group_ids = [aws_security_group.logger_priv_sg.id]
   iam_instance_profile = aws_iam_instance_profile.ssm_profile.name
 
-  user_data = templatefile("${path.module}/priv_userdata.sh", {
-    pub_private_ip = module.pub_ec2_instance.private_ip
+user_data = templatefile("${path.module}/priv_userdata.sh", {
+  private_key    = data.aws_ssm_parameter.logger_private_key.value
+  pub_private_ip = module.pub_ec2_instance.private_ip
 })
-
   tags = {
     Terraform   = "true"
     Environment = "dev"
@@ -122,30 +110,6 @@ resource "aws_internet_gateway" "logger-igw" {
   }
 }
 
-#Define Public Route Table
-resource "aws_route_table" "pub-rt" {
-  vpc_id = module.pub_vpc.vpc_id
-
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.logger-igw.id
-  }
-
-  route {
-    cidr_block = module.priv_vpc.vpc_cidr_block
-    vpc_peering_connection_id = aws_vpc_peering_connection.peer.id
-  }
-
-  tags = {
-    Name = "logger-pub-route"
-  }
-}
-
-#Define pub-rt Subnet Association
-resource "aws_route_table_association" "pub-rt-assoc" {
-  route_table_id = aws_route_table.pub-rt.id
-  subnet_id = module.pub_vpc.public_subnets[0]
-}
 
 #Define Public EC2 Security Group
 resource "aws_security_group" "logger_pub_sg" {
@@ -157,6 +121,14 @@ resource "aws_security_group" "logger_pub_sg" {
 resource "aws_vpc_security_group_ingress_rule" "allow_ssh_pub" {
   security_group_id = aws_security_group.logger_pub_sg.id
   cidr_ipv4         = var.my_ip
+  from_port         = 22
+  ip_protocol       = "tcp"
+  to_port           = 22
+}
+
+resource "aws_vpc_security_group_ingress_rule" "allow_ssh_from_priv" {
+  security_group_id = aws_security_group.logger_pub_sg.id
+  cidr_ipv4         = module.priv_vpc.vpc_cidr_block
   from_port         = 22
   ip_protocol       = "tcp"
   to_port           = 22
@@ -323,4 +295,23 @@ resource "aws_vpc_peering_connection" "peer" {
   requester {
     allow_remote_vpc_dns_resolution = true
   }
+}
+
+#Define Routes
+resource "aws_route" "priv_to_pub_peering" {
+  route_table_id            = module.priv_vpc.private_route_table_ids[0]
+  destination_cidr_block    = module.pub_vpc.vpc_cidr_block
+  vpc_peering_connection_id = aws_vpc_peering_connection.peer.id
+}
+
+resource "aws_route" "pub_to_priv_peering" {
+  route_table_id            = module.pub_vpc.public_route_table_ids[0]
+  destination_cidr_block    = module.priv_vpc.vpc_cidr_block
+  vpc_peering_connection_id = aws_vpc_peering_connection.peer.id
+}
+
+resource "aws_route" "pub_to_internet" {
+  route_table_id         = module.pub_vpc.public_route_table_ids[0]
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id             = aws_internet_gateway.logger-igw.id
 }
