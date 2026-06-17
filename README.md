@@ -2,4 +2,6 @@ The idea for this project came from Day 49 of KodeKloud's 100 Days of Cloud (AWS
 
 I've started adding the public infrastructure: VPC, subnets, IGW, route table, and EC2 and associated moving parts.
 
+Update: the full system is up and running: it will each minute the private instance will use a cron job to copy a specified file to the public instance, and from there, to a private S3 bucket. As a tiered storage application, I can specifiy the target file(s) by name, size, or location so it's quite flexible. It can also do this across multiple private instances and buckets, though a Cloudwatch agent might be more efficient.
+
 Where I see a potential avenue for improvement: since the log data will eventually end up in an S3 bucket, I could use a VPC endpoint for S3 instead of an internet gateway. That way, no traffic needs to leave AWS. However, I may want a Nat Instance/Gateway to allow outbound traffic for the sake of the EC2 instances, so that may be a wash. I'll consider it further.
